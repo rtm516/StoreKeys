@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="LibCikExtractor/LibCikExtractor.csproj" />
+  <Project Path="StoreKeys/StoreKeys.csproj" />
+  <Project Path="StoreKeys.Cli/StoreKeys.Cli.csproj" />
+  <Project Path="extern/StoreLib/StoreLib/StoreLib.csproj" />
+  <Project Path="extern/XvdTool.Streaming/LibXboxOne/LibXboxOne.csproj" />
+</Solution>

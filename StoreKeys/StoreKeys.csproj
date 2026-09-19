@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>StoreKeys</PackageId>
+    <Description>
+      Recover MSIXVC/XVC content keys (CIKs) from the Microsoft Store licensing service for
+      titles you own, installed locally or not.
+    </Description>
+    <PackageTags>msixvc;xvc;xvd;xbox;microsoft-store;cik;drm</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <DebugType>embedded</DebugType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);PackProjectReferences</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Not published packages, so they are packed into lib/ rather than referenced. -->
+    <ProjectReference Include="..\extern\XvdTool.Streaming\LibXboxOne\LibXboxOne.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\extern\StoreLib\StoreLib\StoreLib.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\LibCikExtractor\LibCikExtractor.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Dependencies of the bundled assemblies; PrivateAssets stops these flowing through. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.1" />
+    <PackageReference Include="Registry" Version="1.5.0" />
+    <PackageReference Include="System.Management" Version="9.0.2" />
+    <PackageReference Include="Spectre.Console" Version="0.49.2-preview.0.75" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+    <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" />
+    <PackageReference Include="DiscUtils.Ntfs" Version="0.16.13" />
+    <PackageReference Include="DiscUtils.Vhd" Version="0.16.13" />
+    <PackageReference Include="System.IO.Packaging" Version="9.0.1" />
+    <PackageReference Include="System.Data.DataSetExtensions" Version="4.6.0-preview3.19128.7" />
+  </ItemGroup>
+
+  <Target Name="PackProjectReferences" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <BuildOutputInPackage
+        Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget','ProjectReference'))"
+        Condition="'%(Extension)' == '.dll'" />
+    </ItemGroup>
+  </Target>
+
+</Project>

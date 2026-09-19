@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- The namespace is CikExtractor, not LibCikExtractor: the sources are verbatim copies
+         and keeping their namespace is what makes them diffable against upstream. -->
+    <RootNamespace>CikExtractor</RootNamespace>
+
+    <PackageId>LibCikExtractor</PackageId>
+    <Description>
+      Library build of LukeFZ's CikExtractor. Upstream ships only an executable, so the sources
+      are copied here unmodified. See README.md.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same versions upstream uses, so the copied sources compile unchanged. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.1" />
+    <PackageReference Include="Registry" Version="1.5.0" />
+    <PackageReference Include="System.Management" Version="9.0.2" />
+    <!-- Only for ConsoleLogger, which the copied files call. Kept so they stay verbatim. -->
+    <PackageReference Include="Spectre.Console" Version="0.49.2-preview.0.75" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Upstream types are internal. Rather than edit the copies, grant access. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>StoreKeys</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

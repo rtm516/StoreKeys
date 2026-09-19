@@ -1,0 +1,7 @@
+[submodule "extern/XvdTool.Streaming"]
+	path = extern/XvdTool.Streaming
+	url = https://github.com/LukeFZ/XvdTool.Streaming.git
+[submodule "extern/StoreLib"]
+	path = extern/StoreLib
+	url = https://github.com/StoreDev/StoreLib.git
+	branch = Public
