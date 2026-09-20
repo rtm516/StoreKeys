@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -85,13 +84,13 @@ internal sealed class LicensingClient(string accessToken)
             ["needKey"] = needKey,
             ["users"] = new JsonObject
             {
-                [CurrentUserSid()] = new JsonArray
+                [TicketReference] = new JsonArray
                 {
                     new JsonObject
                     {
                         ["identityType"] = "Msa",
                         ["identityValue"] = accessToken,
-                        ["localTicketReference"] = LocalTicketReference ?? CurrentUserSid(),
+                        ["localTicketReference"] = TicketReference,
                     },
                 },
             },
@@ -121,19 +120,8 @@ internal sealed class LicensingClient(string accessToken)
         return new Response((int)response.StatusCode, raw, parsed);
     }
 
-    private static string CurrentUserSid()
-    {
-        using var identity = WindowsIdentity.GetCurrent();
-        return identity.User?.Value
-               ?? throw new InvalidOperationException("Could not determine the current user's SID.");
-    }
-
-    /// <summary>
-    /// The broker's WebAccount.Id for the signed-in user, as reported by
-    /// TokenBrokerInternal.FindAllAccountsAsync. When the broker is unavailable this falls back
-    /// to the user's SID, which keeps the reference consistent with the key of the users map.
-    /// </summary>
-    public string? LocalTicketReference { get; set; }
+    /// <summary>Correlates the single identity we send; the value itself is not inspected.</summary>
+    private const string TicketReference = "1";
 
     private static string CurrentMarket()
     {

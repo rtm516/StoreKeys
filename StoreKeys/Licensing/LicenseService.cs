@@ -42,16 +42,12 @@ internal static class LicenseService
     public static async Task<Result> RequestAsync(Guid contentId, CancellationToken cancellationToken)
     {
         var userTicket = await WamAuth.GetTokenAsync();
-        var localTicketReference = await BrokerAccountIdAsync();
 
         Result? last = null;
 
         foreach (var ticket in CandidateTickets())
         {
             var client = new LicensingClient(userTicket) { DeviceAuthorizationToken = ticket };
-
-            if (localTicketReference is not null)
-                client.LocalTicketReference = localTicketReference;
 
             var response = await client.RequestContentLicenseAsync(contentId, ct: cancellationToken);
             last = new Result(response.StatusCode, response.RawBody, response.Json);
@@ -82,20 +78,4 @@ internal static class LicenseService
                 yield return candidate.Token;
     }
 
-    /// <summary>
-    /// The broker's account id, used as localTicketReference. Best effort: the internal broker
-    /// class is undocumented and may not exist on every build.
-    /// </summary>
-    private static async Task<string?> BrokerAccountIdAsync()
-    {
-        try
-        {
-            var accounts = await TokenBrokerInternal.FindAllAccountsAsync();
-            return accounts.Count > 0 ? accounts[0].Id : null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
 }

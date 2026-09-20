@@ -79,7 +79,13 @@ Several things inferred from those strings turned out to be wrong. Captured from
 | `clientChallenge` | optional | **mandatory**, 504 chars base64 (static XML) |
 
 The header and body carry *different* identities: the header authenticates the **device**, the
-body the **user** via `users[sid][0].identityValue`.
+body the **user** via `identityValue`.
+
+The `users` map key and `localTicketReference` look like identity but are not. The OS sends the
+Windows SID and the broker's account id, but the service accepts any value and does not require
+the two to match: a SID, `"1"`, and two mismatched arbitrary strings all return the same licence.
+They are local handles for correlating a request that carries several identities. Only
+`identityValue` authenticates.
 
 `users` is the awkward one, pinned down by the service's own validation errors. It is a
 `UserContractV7Dictionary`: a map of ticket reference to a **list** of `IdentityContractV7`. An
@@ -215,7 +221,7 @@ Only `FetchPackagesAsync` needs it; the CIK path uses DisplayCatalog only.
 
 * `LicensingClient` / `ClientChallenge` - the licensing protocol is undocumented and no library
   implements it.
-* `DeviceTokenStore`, `TokenBrokerInternal`, `WamAuth` - Windows APIs, called directly.
+* `DeviceTokenStore`, `WamAuth` - Windows APIs, called directly.
 * `XvcHeader` - only reads the VDUID at 0x220. LibXboxOne has a full `XvdHeader` struct but it
   wants the whole header; reading 16 bytes works the same over a local file and an HTTP range
   request, which is the point.
