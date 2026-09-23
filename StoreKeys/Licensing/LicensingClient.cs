@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -79,7 +80,7 @@ internal sealed class LicensingClient(string accessToken)
             ["needKey"] = needKey,
             ["users"] = new JsonObject
             {
-                [TicketReference] = new JsonArray
+                [CurrentUserSid()] = new JsonArray
                 {
                     new JsonObject
                     {
@@ -90,6 +91,14 @@ internal sealed class LicensingClient(string accessToken)
                 },
             },
         };
+    }
+
+    private static string CurrentUserSid()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+
+        return identity.User?.Value
+               ?? throw new StoreKeysException("Could not determine the current user's SID.");
     }
 
     public async Task<Response> PostAsync(string route, JsonObject body, CancellationToken ct = default)

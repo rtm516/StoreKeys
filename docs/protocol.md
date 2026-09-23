@@ -79,10 +79,9 @@ LukeFZ describes the same endpoint in
 
 ### The actual contract
 
-Several things inferred from those strings turned out to be wrong. Captured from a successful
-(HTTP 200) Xbox GamingServices request:
+From a successful (HTTP 200) Xbox GamingServices request, against what the DLL strings imply:
 
-| Field | Inferred | Actual |
+| Field | DLL strings | On the wire |
 | --- | --- | --- |
 | `Authorization` | `WLID1.0="<user ticket>"` | `t=<device authorization token>` |
 | `from` | - | `XboxLicenseManager` |
@@ -96,11 +95,9 @@ Several things inferred from those strings turned out to be wrong. Captured from
 The header and body carry *different* identities: the header authenticates the **device**, the
 body the **user** via `identityValue`.
 
-The `users` map key and `localTicketReference` look like identity but are not. The OS sends the
-Windows SID and the broker's account id, but the service accepts any value and does not require
-the two to match: a SID, `"1"`, and two mismatched arbitrary strings all return the same licence.
-They are local handles for correlating a request that carries several identities. Only
-`identityValue` authenticates.
+The `users` map **key must be the user's Windows SID**. Some content is licensed whatever key is
+sent, so an arbitrary one can appear to work; the rest answers MKMS 213 "Invalid Request",
+reported as an unhelpful HTTP 500. `localTicketReference` is not inspected.
 
 `users` is the awkward one, pinned down by the service's own validation errors. It is a
 `UserContractV7Dictionary`: a map of ticket reference to a **list** of `IdentityContractV7`. An
@@ -109,7 +106,7 @@ rejected ("requires a JSON array").
 
 ```json
 "users": {
-  "1": [
+  "S-1-5-21-...": [
     { "identityType": "Msa", "identityValue": "<ticket>", "localTicketReference": "1" }
   ]
 }
