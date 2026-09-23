@@ -1,3 +1,4 @@
+using System.CommandLine;
 using StoreKeys;
 
 namespace StoreKeys.Cli;
@@ -12,74 +13,45 @@ internal static class Program
     private const string CikDirectory = "Cik";
 
     private static async Task<int> Main(string[] args)
-    {
-        if (args.Length == 0) { Usage(); return 1; }
+        => await BuildCommandLine().Parse(args).InvokeAsync();
 
-        try
+    private static RootCommand BuildCommandLine()
+    {
+        var root = new RootCommand("storekeys - recover XVC/XVD content keys for Store titles you own")
         {
-            return args[0].ToLowerInvariant() switch
-            {
-                "cik" => await CikCommand(args[1..]),
-                "contentid" => await ContentIdCommand(args[1..]),
-                "devicekey" => await DeviceKeyCommand(args[1..]),
-                _ => Unknown(args[0]),
-            };
-        }
-        catch (StoreKeysException ex)
-        {
-            Console.Error.WriteLine($"error: {ex.Message}");
-            return 1;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"error: {ex.Message}");
-            return 1;
-        }
+            CikCommand(),
+            ContentIdCommand(),
+            DeviceKeyCommand(),
+        };
+
+        return root;
     }
 
-    private static int Unknown(string command)
-    {
-        Console.Error.WriteLine($"Unknown command '{command}'.");
-        Usage();
-        return 1;
-    }
-
-    private static void Usage()
-    {
-        Console.WriteLine("storekeys - recover XVC/XVD content keys for Store titles you own");
-        Console.WriteLine();
-        Console.WriteLine("  cik <contentId | product id | store url | xvc file | url>");
-        Console.WriteLine("      Write keys to Cik/<keyid>.cik. Asks the licensing service, which covers");
-        Console.WriteLine($"      anything your account owns, installed here or not. Uses {CredentialFile}.");
-        Console.WriteLine();
-        Console.WriteLine("  contentid <product id | store url | xvc file | url>");
-        Console.WriteLine("      Print the ContentId(s) the licensing service keys off.");
-        Console.WriteLine();
-        Console.WriteLine("  devicekey");
-        Console.WriteLine($"      Show the credential in {CredentialFile}. Keys arrive wrapped under it,");
-        Console.WriteLine("      so one is needed once and then reused.");
-        Console.WriteLine();
-        Console.WriteLine("  devicekey --fromdevice [--force]");
-        Console.WriteLine("      Derive this machine's device key from its licence store. Needs elevation.");
-        Console.WriteLine();
-        Console.WriteLine("  devicekey --newdevice [--force]");
-        Console.WriteLine("      Register a new device identity with MSA instead. No elevation and no");
-        Console.WriteLine("      prompts, so it works without admin rights - but it creates a device");
-        Console.WriteLine("      registration on Microsoft's identity service.");
-    }
+    /// <summary>What every command that resolves content takes.</summary>
+    private static Argument<string> TargetArgument() =>
+        new("target")
+        {
+            Description = "contentId, product id, store url, xvc file or url",
+        };
 
     // ----------------------------------------------------------------- cik
 
-    private static async Task<int> CikCommand(string[] args)
+    private static Command CikCommand()
     {
-        var target = args.FirstOrDefault(a => !a.StartsWith('-'));
+        var target = TargetArgument();
 
-        if (target is null)
+        var command = new Command("cik", $"Write keys to {CikDirectory}/<keyid>.cik")
         {
-            Console.Error.WriteLine("Need a contentId, product id, store URL, xvc file or URL.");
-            return 1;
-        }
+            target,
+        };
 
+        command.SetAction((result, _) => Guard(() => Cik(result.GetValue(target)!)));
+
+        return command;
+    }
+
+    private static async Task<int> Cik(string target)
+    {
         var content = await StoreContent.FromAsync(target);
         Describe(content);
 
@@ -93,17 +65,28 @@ internal static class Program
             return 1;
         }
 
-        var keys = await content.FetchCikAsync(ResolveCredential());
-        return WriteKeys(keys);
+        return WriteKeys(await content.FetchCikAsync(ResolveCredential()));
     }
 
     // ----------------------------------------------------------- contentid
 
-    private static async Task<int> ContentIdCommand(string[] args)
+    private static Command ContentIdCommand()
     {
-        if (args.Length == 0) { Console.Error.WriteLine("Need a product id, store URL, file or URL."); return 1; }
+        var target = TargetArgument();
 
-        var content = await StoreContent.FromAsync(args[0]);
+        var command = new Command("contentid", "Print the ContentId(s) the licensing service keys off")
+        {
+            target,
+        };
+
+        command.SetAction((result, _) => Guard(() => ContentId(result.GetValue(target)!)));
+
+        return command;
+    }
+
+    private static async Task<int> ContentId(string target)
+    {
+        var content = await StoreContent.FromAsync(target);
         Describe(content);
 
         foreach (var contentId in content.ContentIds)
@@ -114,21 +97,50 @@ internal static class Program
 
     // ----------------------------------------------------------- devicekey
 
-    private static async Task<int> DeviceKeyCommand(string[] args)
+    private static Command DeviceKeyCommand()
     {
-        var fromDevice = args.Contains("--fromdevice");
-        var newDevice = args.Contains("--newdevice");
-
-        if (fromDevice && newDevice)
+        var fromDevice = new Option<bool>("--fromdevice")
         {
-            Console.Error.WriteLine("Pick one of --fromdevice or --newdevice.");
-            return 1;
-        }
+            Description = "Derive from this machine's licence store. Needs elevation.",
+        };
 
+        var newDevice = new Option<bool>("--newdevice")
+        {
+            Description = "Register a new device identity with MSA instead. No elevation.",
+        };
+
+        var force = new Option<bool>("--force")
+        {
+            Description = $"Replace an existing {CredentialFile}.",
+        };
+
+        var command = new Command("devicekey", $"Show or create the credential in {CredentialFile}")
+        {
+            fromDevice,
+            newDevice,
+            force,
+        };
+
+        command.Validators.Add(result =>
+        {
+            if (result.GetValue(fromDevice) && result.GetValue(newDevice))
+                result.AddError("Pick one of --fromdevice or --newdevice.");
+        });
+
+        command.SetAction((result, _) => Guard(() => DeviceKey(
+            result.GetValue(fromDevice),
+            result.GetValue(newDevice),
+            result.GetValue(force))));
+
+        return command;
+    }
+
+    private static async Task<int> DeviceKey(bool fromDevice, bool newDevice, bool force)
+    {
         if (!fromDevice && !newDevice)
             return ShowCredential();
 
-        if (!args.Contains("--force") && File.Exists(CredentialFile))
+        if (!force && File.Exists(CredentialFile))
         {
             Console.WriteLine($"{CredentialFile} already exists. Pass --force to replace it.");
             return 0;
@@ -193,6 +205,25 @@ internal static class Program
         return 0;
     }
 
+    // ---------------------------------------------------------------- misc
+
+    /// <summary>
+    /// Turns a library failure into a message and an exit code. The parser handles everything
+    /// that goes wrong before a command runs.
+    /// </summary>
+    private static async Task<int> Guard(Func<Task<int>> action)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"error: {ex.Message}");
+            return 1;
+        }
+    }
+
     /// <summary>Confirms the credential yields a key, which is the only thing that matters.</summary>
     private static void Describe(DeviceCredential credential)
     {
@@ -206,6 +237,15 @@ internal static class Program
         }
     }
 
+    private static void Describe(StoreContent content)
+    {
+        if (content.Title is not null)
+            Console.WriteLine($"{content.ProductId}: {content.Title}");
+
+        if (content.PackageFamilyName is not null)
+            Console.WriteLine($"  package family: {content.PackageFamilyName}");
+    }
+
     /// <summary>
     /// Caching the credential is the CLI's job, not the library's. Deriving it needs elevation,
     /// so it is never done implicitly in the middle of another command.
@@ -216,18 +256,7 @@ internal static class Program
             return DeviceCredential.FromJson(File.ReadAllText(CredentialFile));
 
         throw new StoreKeysException(
-            $"No {CredentialFile} found. Run 'devicekey' once to create it (needs elevation).");
-    }
-
-    // ---------------------------------------------------------------- misc
-
-    private static void Describe(StoreContent content)
-    {
-        if (content.Title is not null)
-            Console.WriteLine($"{content.ProductId}: {content.Title}");
-
-        if (content.PackageFamilyName is not null)
-            Console.WriteLine($"  package family: {content.PackageFamilyName}");
+            $"No {CredentialFile} found. Run 'devicekey --fromdevice' or 'devicekey --newdevice' first.");
     }
 
     private static int WriteKeys(IReadOnlyList<ContentKey> keys)
