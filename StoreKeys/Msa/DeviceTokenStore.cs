@@ -220,6 +220,6 @@ internal static class DeviceTokenStore
 
         // Stored tickets keep their "t=" prefix, but the Authorization header is built as
         // "t={token}" - returning it with the prefix intact would send "t=t=Ew...".
-        return ticket.StartsWith("t=", StringComparison.Ordinal) ? ticket[2..] : ticket;
+        return MsaAuth.StripTicketPrefix(ticket);
     }
 }

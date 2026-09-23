@@ -59,8 +59,8 @@ internal static class LicenseService
         var userTicket = await WamAuth.GetTokenAsync();
         deviceToken ??= await SystemAuth.GetTicketAsync();
 
-        var client = new LicensingClient(userTicket) { DeviceAuthorizationToken = deviceToken };
-        var response = await client.RequestContentLicenseAsync(contentId, ct: cancellationToken);
+        var client = new LicensingClient(userTicket, deviceToken);
+        var response = await client.RequestContentLicenseAsync(contentId, cancellationToken);
 
         return new Result(response.StatusCode, response.RawBody, response.Json);
     }

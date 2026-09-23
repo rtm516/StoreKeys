@@ -192,18 +192,11 @@ into the file in the XvcInfo region.
 * **Descenders**, owned but never installed on this machine, was fetched entirely from the
   service with nothing imported.
 
-## Dead ends
+## clientChallenge
 
-**`DeviceEkbRequired`.** With a valid ticket and a well-formed body the service replied
-`{"faultcode":3023,"code":"DeviceEkbRequired"}`, which reads as a missing device identity. The
-producer looked like `ClipGenerateClientChallengeData` in `clipc.dll` (RVA `0x4160`), and
-[research on the CLIP service](https://github.com/KiFilterFiberContext/windows-software-policy)
-shows ClipSVC's handler structures are WarBird-obfuscated, so reversing it looked expensive.
-
-None of that was needed. `DeviceEkbRequired` is simply what the service says when
-`clientChallenge` is missing *or malformed*, which is what made it read as a device-binding
-problem rather than a serialisation one. Base64-decoding the field gives 377 bytes of plain XML
-declaring three protocol versions, with no device binding:
+Despite the name, and despite `DeviceEkbRequired` being the error for omitting it, the field
+carries no device binding. It is a constant: 377 bytes of plain XML declaring three protocol
+versions, identical across machines and captures, which `ClientChallenge.Build()` reproduces.
 
 ```xml
 <ClientChallenge ... Version="2">
@@ -213,10 +206,14 @@ declaring three protocol versions, with no device binding:
 </ClientChallenge>
 ```
 
-It was byte-identical across captures because it is a constant, not because it is machine-bound.
-`ClientChallenge.Build()` reproduces it exactly.
+Its producer is `ClipGenerateClientChallengeData` in `clipc.dll` (RVA `0x4160`), whose handler
+structures are WarBird-obfuscated - see
+[research on the CLIP service](https://github.com/KiFilterFiberContext/windows-software-policy).
+Reversing it is unnecessary given the field is fixed.
 
-**Xbox console licences.** `XvdTool.Streaming` also understands Xbox CLAS licences (namespace
+## Xbox console licences
+
+`XvdTool.Streaming` also understands Xbox CLAS licences (namespace
 `…/xboxlive/security/clas/LicResp/v1`, a base64 `SignedLicense` wrapping an `SPLicenseBlock`)
 whose CIK is AES-ECB encrypted under the **ODK**, not the device key. That needs a console secret
 and is out of scope. Xbox titles installed through the Xbox app on PC use the normal

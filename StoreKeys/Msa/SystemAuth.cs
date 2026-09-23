@@ -10,18 +10,15 @@ namespace StoreKeys.Msa
         public static async Task<string> GetTicketAsync()
         {
             var authenticator = OnlineIdSystemAuthenticator.Default;
-            authenticator.ApplicationId = new Guid("268761a2-03f3-40df-8a8b-c3db24145b6b");
+            authenticator.ApplicationId = new Guid(MsaAuth.BrokerClientId);
 
-            var request = new OnlineIdServiceTicketRequest("service::licensing.mp.microsoft.com::MBI_SSL");
+            var request = new OnlineIdServiceTicketRequest(MsaAuth.LicensingScope);
             var result = await authenticator.GetTicketAsync(request);
 
             if (result.Status != OnlineIdSystemTicketStatus.Success)
                 throw new InvalidOperationException(Describe(result));
 
-            var ticket = result.Identity.Ticket.Value;
-            return ticket.StartsWith("t=", StringComparison.Ordinal)
-                ? ticket[2..]
-                : ticket;
+            return MsaAuth.StripTicketPrefix(result.Identity.Ticket.Value);
         }
 
         private static string Describe(OnlineIdSystemTicketResult result)

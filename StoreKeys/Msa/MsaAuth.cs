@@ -14,6 +14,16 @@ internal static class MsaAuth
 
     public const string LicensingScope = "service::licensing.mp.microsoft.com::MBI_SSL";
 
+    /// <summary>
+    /// Prefix MSA puts on a compact ticket. The licensing Authorization header is built as
+    /// <c>t={ticket}</c>, so tickets are kept without it.
+    /// </summary>
+    public const string TicketPrefix = "t=";
+
+    /// <summary>Removes <see cref="TicketPrefix"/> if present, so it is never sent twice.</summary>
+    public static string StripTicketPrefix(string ticket)
+        => ticket.StartsWith(TicketPrefix, StringComparison.Ordinal) ? ticket[TicketPrefix.Length..] : ticket;
+
     public sealed record Tokens(
         [property: JsonPropertyName("access_token")] string AccessToken,
         [property: JsonPropertyName("expires_in")] int ExpiresIn)

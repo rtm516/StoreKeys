@@ -39,9 +39,9 @@ internal static class DeviceAuthentication
     /// requesting client id; the bare <c>service::…</c> string is refused with 0x80045c31.
     /// </summary>
     private static string LicensingScope =>
-        "scope=service::licensing.mp.microsoft.com::MBI_SSL"
+        $"scope={MsaAuth.LicensingScope}"
         + $"&uaid={Guid.NewGuid():N}"
-        + "&clientid=268761a2-03f3-40df-8a8b-c3db24145b6b";
+        + $"&clientid={MsaAuth.BrokerClientId}";
 
     private static readonly XNamespace S = "http://www.w3.org/2003/05/soap-envelope";
     private static readonly XNamespace Ps = "http://schemas.microsoft.com/Passport/SoapServices/PPCRL";
@@ -230,7 +230,7 @@ internal static class DeviceAuthentication
             .FirstOrDefault(e => e.Name.LocalName == "BinarySecurityToken")?.Value.Trim();
 
         if (!string.IsNullOrEmpty(token))
-            return token.StartsWith("t=", StringComparison.Ordinal) ? token[2..] : token;
+            return MsaAuth.StripTicketPrefix(token);
 
         // A per-scope refusal is reported as errorstatus; a whole-request failure as a fault.
         var problem = document.Descendants()
