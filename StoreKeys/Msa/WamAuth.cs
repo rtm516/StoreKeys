@@ -11,9 +11,8 @@ namespace StoreKeys.Msa;
 /// so this mirrors the OS path.
 ///
 /// This yields the *user* ticket that goes in the request body. It cannot produce the Device
-/// Authorization token the Authorization header needs - that was probed exhaustively across
-/// client ids, scope policies, request properties, explicit broker accounts and MSIX package
-/// identity, and every combination returns a user ticket. See the README.
+/// Authorization token the Authorization header needs: every client id, scope policy, request
+/// property, broker account and package identity returns a user ticket. See docs/protocol.md.
 /// </summary>
 internal static class WamAuth
 {

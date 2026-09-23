@@ -5,21 +5,23 @@ Recover MSIXVC/XVC content keys (CIKs) for Microsoft Store titles you own, so
 needing the game installed**.
 
 Keys come from the Store licensing service, so this covers anything your account is entitled to.
-The only local step is deriving this machine's device key, which every licence is wrapped under.
+Every licence is wrapped under a device key, which comes from either this machine's identity or
+one registered on demand - the latter needs no elevation, so it also works without admin rights.
 
-Windows only: the device key comes out of the licence store, and authentication goes through the
-Web Account Manager.
+Windows only: authentication goes through the Web Account Manager.
 
 ## Library
 
 ```csharp
 using StoreKeys;
 
-// One-time; needs elevation. Cache it yourself - the library never writes to disk.
-byte[] deviceKey = DeviceKey.Derive();
+// One-time. Cache it yourself - the library never writes to disk.
+var credential = DeviceCredential.FromLocalMachine();      // this machine, needs elevation
+// var credential = await DeviceCredential.ProvisionAsync();  // or register one, no elevation
+File.WriteAllText("device.json", credential.ToJson());
 
 var content = await StoreContent.FromUrlAsync("https://www.xbox.com/en-GB/games/store/minecraft-for-windows/9nblggh2jhxj");
-var keys    = await content.FetchCikAsync(deviceKey);
+var keys    = await content.FetchCikAsync(credential);
 
 foreach (var (keyId, bytes) in keys.SelectMany(k => k.ToCikFiles()))
     File.WriteAllBytes($"Cik/{keyId}.cik", bytes);
@@ -45,15 +47,21 @@ foreach (var package in await content.FetchPackagesAsync())
 ## CLI
 
 ```bash
-# One-time: derive this machine's device key into deviceKey.txt. Needs elevation.
-StoreKeys.Cli devicekey
+# One-time. Either derive this machine's credential (needs elevation)...
+./StoreKeys.Cli.exe devicekey --fromdevice
 
-StoreKeys.Cli cik https://www.xbox.com/en-GB/games/store/minecraft-for-windows/9nblggh2jhxj
-StoreKeys.Cli cik 9nblggh2jhxj
-StoreKeys.Cli cik 7792d9ce-355a-493c-afbd-768f4a77c3b0
-StoreKeys.Cli cik Microsoft.MinecraftUWP_..._x64__8wekyb3d8bbwe.msixvc
+# ...or register a new device identity instead, which needs neither elevation nor a prompt.
+./StoreKeys.Cli.exe devicekey --newdevice
 
-StoreKeys.Cli contentid 9nblggh2jhxj
+# Show what device.json currently holds.
+./StoreKeys.Cli.exe devicekey
+
+./StoreKeys.Cli.exe cik https://www.xbox.com/en-GB/games/store/minecraft-for-windows/9nblggh2jhxj
+./StoreKeys.Cli.exe cik 9nblggh2jhxj
+./StoreKeys.Cli.exe cik 7792d9ce-355a-493c-afbd-768f4a77c3b0
+./StoreKeys.Cli.exe cik Microsoft.MinecraftUWP_..._x64__8wekyb3d8bbwe.msixvc
+
+./StoreKeys.Cli.exe contentid 9nblggh2jhxj
 ```
 
 ## Licence

@@ -31,12 +31,27 @@ sequenceDiagram
 
 Two separate secrets, and it matters which is which:
 
-* The **device key** is 16 bytes, per-machine and effectively permanent. Deriving it reads the
-  licence store out of the registry, which is the UAC prompt and the one part that genuinely
-  requires your PC.
+* The **device key** is 16 bytes and effectively permanent. It belongs to a device identity,
+  which can be either this machine's or one registered on demand - see below.
 * The **content licence** carrying the CIK is per-title and issued on demand, at *licence
   acquisition* time rather than install time. That is why a key is available for anything your
   account is entitled to, installed or not.
+
+### Which device identity
+
+The key can come from either of two identities, and nothing downstream cares which:
+
+* **This machine.** Derived from the local licence store, which needs elevation and so cannot
+  work without admin rights.
+* **A registered identity.** A device registered with MSA on demand, which needs no elevation
+  and no prompts, so it works for a non-admin user and unattended.
+
+Both produce the same content keys, since the device key only wraps a CIK in transit. The one
+rule is that the device token sent with a licence request and the key used to unwrap the result
+must belong to the *same* identity; mixing them fails the unwrap.
+
+Registering an identity writes state to Microsoft's identity service, so it is worth doing once
+and caching.
 
 If you have used a CikExtractor *release zip*, note those shipped an `Emulation/` folder running
 `clipsp.sys` under Qiling and needed Python. Current CikExtractor reduces the CLEP v4 vault to a

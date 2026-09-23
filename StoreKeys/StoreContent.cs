@@ -128,12 +128,12 @@ public sealed class StoreContent
     // ------------------------------------------------------------------ keys
 
     /// <summary>
-    /// Asks the Store licensing service for this content's keys and unwraps them with
-    /// <paramref name="deviceKey"/>.
+    /// Asks the Store licensing service for this content's keys and unwraps them with the
+    /// credential's device key.
     /// </summary>
-    /// <param name="deviceKey">
-    /// This machine's 16-byte device key, from <see cref="DeviceKey.Derive"/>. Passed in because
-    /// deriving it needs elevation, so whether to cache it is the caller's decision.
+    /// <param name="credential">
+    /// The device identity to fetch as. Its key and its device token have to belong to the same
+    /// device, which is why this takes a credential rather than a bare key.
     /// </param>
     /// <param name="cancellationToken">Cancels the licence requests.</param>
     /// <remarks>
@@ -141,17 +141,45 @@ public sealed class StoreContent
     /// console SKU, typically - says nothing about the others.
     /// </remarks>
     public async Task<IReadOnlyList<ContentKey>> FetchCikAsync(
+        DeviceCredential credential,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(credential);
+
+        if (!credential.IsProvisioned)
+            return await FetchCikAsync(credential.DeviceKey, cancellationToken);
+
+        if (!OperatingSystem.IsWindows())
+            throw new StoreKeysException("Device authentication needs Windows.");
+
+        // A provisioned identity mints its own token: the service wraps the CIK under the key of
+        // whichever device authenticated, so this token and this key have to be the same device.
+        using var http = new HttpClient();
+        var deviceToken = await Msa.DeviceAuthentication.GetLicensingTokenAsync(
+            http, credential.Membername!, credential.Password!, credential.DeviceLicense!, cancellationToken);
+
+        return await FetchCikAsync(credential.DeviceKey, deviceToken, cancellationToken);
+    }
+
+    /// <inheritdoc cref="FetchCikAsync(DeviceCredential, CancellationToken)"/>
+    public Task<IReadOnlyList<ContentKey>> FetchCikAsync(
         byte[] deviceKey,
         CancellationToken cancellationToken = default)
+        => FetchCikAsync(deviceKey, deviceToken: null, cancellationToken);
+
+    private async Task<IReadOnlyList<ContentKey>> FetchCikAsync(
+        byte[] deviceKey,
+        string? deviceToken,
+        CancellationToken cancellationToken)
     {
         var keys = new List<ContentKey>();
         var failures = new List<string>();
 
         foreach (var contentId in ContentIds)
         {
-            var response = await LicenseService.RequestAsync(contentId, cancellationToken);
+            var response = await LicenseService.RequestAsync(contentId, cancellationToken, deviceToken);
 
-            if (!response.IsSuccess)
+            if (!response.IsSuccess || response.SatisfactionFailure is not null)
             {
                 failures.Add($"{contentId}: {response.Describe()}");
                 continue;

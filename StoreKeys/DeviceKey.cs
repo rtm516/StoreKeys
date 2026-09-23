@@ -29,6 +29,29 @@ public static class DeviceKey
         return DeviceKeyDumper.DeriveDeviceKey(parameters);
     }
 
+    /// <summary>
+    /// Derives the device key from a device licence blob, wherever it came from. This is the
+    /// same computation <see cref="Derive"/> performs, without the registry read or elevation.
+    /// </summary>
+    /// <param name="deviceLicense">
+    /// The <c>EncryptedDeviceKey</c> block of an SPLicense, as
+    /// <see cref="CikExtractor.Models.SpLicense.EncryptedDeviceKey"/> returns it: the leading
+    /// size field already stripped, so the version dword is at offset 0.
+    /// </param>
+    public static byte[] FromDeviceLicense(byte[] deviceLicense)
+    {
+        ArgumentNullException.ThrowIfNull(deviceLicense);
+
+        try
+        {
+            return DeviceKeyDumper.DeriveDeviceKey(new DeviceKeyParameters([], [], deviceLicense));
+        }
+        catch (Exception ex)
+        {
+            throw new StoreKeysException($"Could not derive a device key from this licence: {ex.Message}", ex);
+        }
+    }
+
     /// <summary>Parses a 32-character hex device key.</summary>
     public static byte[] Parse(string hex)
     {

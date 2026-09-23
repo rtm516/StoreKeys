@@ -8,7 +8,7 @@ namespace StoreKeys.Cli;
 /// </summary>
 internal static class Program
 {
-    private const string DeviceKeyFile = "deviceKey.txt";
+    private const string CredentialFile = "device.json";
     private const string CikDirectory = "Cik";
 
     private static async Task<int> Main(string[] args)
@@ -21,7 +21,7 @@ internal static class Program
             {
                 "cik" => await CikCommand(args[1..]),
                 "contentid" => await ContentIdCommand(args[1..]),
-                "devicekey" => DeviceKeyCommand(args[1..]),
+                "devicekey" => await DeviceKeyCommand(args[1..]),
                 _ => Unknown(args[0]),
             };
         }
@@ -48,17 +48,24 @@ internal static class Program
     {
         Console.WriteLine("storekeys - recover XVC/XVD content keys for Store titles you own");
         Console.WriteLine();
-        Console.WriteLine("  cik <contentId | product id | store url | xvc file | url> [--device-key <hex|path>]");
+        Console.WriteLine("  cik <contentId | product id | store url | xvc file | url>");
         Console.WriteLine("      Write keys to Cik/<keyid>.cik. Asks the licensing service, which covers");
-        Console.WriteLine($"      anything your account owns, installed here or not. Uses {DeviceKeyFile}");
-        Console.WriteLine("      unless --device-key is given.");
+        Console.WriteLine($"      anything your account owns, installed here or not. Uses {CredentialFile}.");
         Console.WriteLine();
         Console.WriteLine("  contentid <product id | store url | xvc file | url>");
         Console.WriteLine("      Print the ContentId(s) the licensing service keys off.");
         Console.WriteLine();
-        Console.WriteLine("  devicekey [--force]");
-        Console.WriteLine($"      Derive this machine's device key into {DeviceKeyFile}. Needs elevation.");
-        Console.WriteLine("      Keys arrive wrapped under it, so it is needed once and then reused.");
+        Console.WriteLine("  devicekey");
+        Console.WriteLine($"      Show the credential in {CredentialFile}. Keys arrive wrapped under it,");
+        Console.WriteLine("      so one is needed once and then reused.");
+        Console.WriteLine();
+        Console.WriteLine("  devicekey --fromdevice [--force]");
+        Console.WriteLine("      Derive this machine's device key from its licence store. Needs elevation.");
+        Console.WriteLine();
+        Console.WriteLine("  devicekey --newdevice [--force]");
+        Console.WriteLine("      Register a new device identity with MSA instead. No elevation and no");
+        Console.WriteLine("      prompts, so it works without admin rights - but it creates a device");
+        Console.WriteLine("      registration on Microsoft's identity service.");
     }
 
     // ----------------------------------------------------------------- cik
@@ -86,7 +93,7 @@ internal static class Program
             return 1;
         }
 
-        var keys = await content.FetchCikAsync(ResolveDeviceKey(args));
+        var keys = await content.FetchCikAsync(ResolveCredential());
         return WriteKeys(keys);
     }
 
@@ -107,40 +114,109 @@ internal static class Program
 
     // ----------------------------------------------------------- devicekey
 
-    private static int DeviceKeyCommand(string[] args)
+    private static async Task<int> DeviceKeyCommand(string[] args)
     {
-        if (!args.Contains("--force") && File.Exists(DeviceKeyFile))
+        var fromDevice = args.Contains("--fromdevice");
+        var newDevice = args.Contains("--newdevice");
+
+        if (fromDevice && newDevice)
         {
-            Console.WriteLine($"{DeviceKeyFile} already exists. Pass --force to derive it again.");
+            Console.Error.WriteLine("Pick one of --fromdevice or --newdevice.");
+            return 1;
+        }
+
+        if (!fromDevice && !newDevice)
+            return ShowCredential();
+
+        if (!args.Contains("--force") && File.Exists(CredentialFile))
+        {
+            Console.WriteLine($"{CredentialFile} already exists. Pass --force to replace it.");
             return 0;
         }
 
-        var key = DeviceKey.Derive();
-        File.WriteAllText(DeviceKeyFile, Convert.ToHexString(key));
+        DeviceCredential credential;
 
-        Console.WriteLine($"Device key written to {Path.GetFullPath(DeviceKeyFile)}");
+        if (newDevice)
+        {
+            Console.WriteLine("Registering a new device identity with MSA.");
+            Console.WriteLine("This writes to Microsoft's identity service; it is not a local operation.");
+            Console.WriteLine();
+
+            credential = await DeviceCredential.ProvisionAsync();
+        }
+        else
+        {
+            credential = DeviceCredential.FromLocalMachine();
+        }
+
+        // Written before the key is derived: a registration we cannot read back afterwards is
+        // waste on the service's side.
+        File.WriteAllText(CredentialFile, credential.ToJson());
+        Console.WriteLine($"Device credential written to {Path.GetFullPath(CredentialFile)}");
+
+        if (newDevice)
+            Console.WriteLine("Keep it. Re-running --newdevice registers another device.");
+
+        Console.WriteLine();
+        Describe(credential);
+
         return 0;
     }
 
-    /// <summary>
-    /// Caching the device key is the CLI's job, not the library's. Deriving it needs elevation,
-    /// so it is never done implicitly in the middle of another command.
-    /// </summary>
-    private static byte[] ResolveDeviceKey(string[] args)
+    /// <summary>Reports on the credential in use, without touching the network or elevating.</summary>
+    private static int ShowCredential()
     {
-        var index = Array.IndexOf(args, "--device-key");
-        if (index >= 0 && index + 1 < args.Length)
+        if (!File.Exists(CredentialFile))
         {
-            var value = args[index + 1];
-            return DeviceKey.Parse(File.Exists(value) ? File.ReadAllText(value) : value);
+            Console.WriteLine($"No {CredentialFile} here.");
+            Console.WriteLine();
+            Console.WriteLine("  devicekey --fromdevice   derive from this machine (needs elevation)");
+            Console.WriteLine("  devicekey --newdevice    register a new device identity instead");
+            return 1;
         }
 
-        if (File.Exists(DeviceKeyFile))
-            return DeviceKey.Parse(File.ReadAllText(DeviceKeyFile));
+        var credential = DeviceCredential.FromJson(File.ReadAllText(CredentialFile));
+
+        Console.WriteLine($"{Path.GetFullPath(CredentialFile)}");
+        Console.WriteLine();
+        Console.WriteLine($"  source      {(credential.IsProvisioned ? "provisioned" : "this machine")}");
+        Console.WriteLine($"  created     {credential.CreatedUtc:u}");
+
+        if (credential.IsProvisioned)
+        {
+            Console.WriteLine($"  membername  {credential.Membername?[..4]}... (withheld)");
+            Console.WriteLine($"  licence     CLEP v{credential.DeviceLicenseVersion?.ToString() ?? "?"}");
+        }
+
+        Describe(credential);
+
+        return 0;
+    }
+
+    /// <summary>Confirms the credential yields a key, which is the only thing that matters.</summary>
+    private static void Describe(DeviceCredential credential)
+    {
+        try
+        {
+            Console.WriteLine($"  device key  {credential.DeviceKey.Length} bytes, derived");
+        }
+        catch (StoreKeysException ex)
+        {
+            Console.WriteLine($"  device key  unavailable: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Caching the credential is the CLI's job, not the library's. Deriving it needs elevation,
+    /// so it is never done implicitly in the middle of another command.
+    /// </summary>
+    private static DeviceCredential ResolveCredential()
+    {
+        if (File.Exists(CredentialFile))
+            return DeviceCredential.FromJson(File.ReadAllText(CredentialFile));
 
         throw new StoreKeysException(
-            $"No {DeviceKeyFile} found. Run 'devicekey' once to derive it (needs elevation), "
-            + "or pass --device-key <hex|path>.");
+            $"No {CredentialFile} found. Run 'devicekey' once to create it (needs elevation).");
     }
 
     // ---------------------------------------------------------------- misc

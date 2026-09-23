@@ -8,26 +8,22 @@ namespace StoreKeys.Licensing;
 /// <summary>
 /// Client for the Microsoft Store licensing service.
 ///
-/// The contract below is not guesswork: it is copied from a captured, successful (HTTP 200)
-/// request made by Xbox GamingServices on this machine. That capture corrected several things we
-/// had inferred from LicenseManager.dll strings:
+/// The body matches a captured, successful (HTTP 200) request from Xbox GamingServices field for
+/// field. Several parts of it are not what LicenseManager.dll's strings suggest:
 ///
-///   * the Authorization header is a bare "t=&lt;ticket&gt;", not WLID1.0="..."
+///   * Authorization is a bare "t=&lt;ticket&gt;", not WLID1.0="..."
 ///   * licenseVersion is 4, not 7
-///   * there is a keyOnly flag alongside needKey
-///   * deviceContext carries just three fields, all literally "Public"
-///   * the users map is keyed by the user's Windows SID, not an arbitrary reference
-///   * clientChallenge is mandatory - omitting it, or supplying a malformed one, both produce
-///     the same faultcode 3023 DeviceEkbRequired, which is why probing field names never moved
+///   * keyOnly accompanies needKey
+///   * deviceContext carries three fields, all literally "Public"
+///   * clientChallenge is mandatory, and a missing one and a malformed one both give faultcode
+///     3023 DeviceEkbRequired - so that error does not distinguish them
 ///
-/// Notably the real request came from XboxLicenseManager (XboxLm), not ClipSVC.
+/// The call comes from XboxLicenseManager (XboxLm), not ClipSVC.
 /// </summary>
 internal sealed class LicensingClient(string accessToken)
 {
     public const string BaseAddress = "https://licensing.mp.microsoft.com";
     public const string ContentRoute = "/v7.0/licenses/content";
-    public const string UserRootRoute = "/v7.0/licenses/userRoot";
-    public const string SubscriptionRootsRoute = "/v7.0/licenses/subscriptionRoots";
 
     /// <summary>User-agent of the component that legitimately makes this call.</summary>
     private const string UserAgent =
@@ -62,7 +58,6 @@ internal sealed class LicensingClient(string accessToken)
         CancellationToken ct = default)
     {
         var body = BuildRequestBody(contentId, needKey, market);
-
         return await PostAsync(ContentRoute, body, ct);
     }
 

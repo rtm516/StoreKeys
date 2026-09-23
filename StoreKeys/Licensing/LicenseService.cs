@@ -27,9 +27,20 @@ internal static class LicenseService
     {
         public bool IsSuccess => StatusCode is >= 200 and < 300;
 
+        /// <summary>
+        /// The reason the service gave for not satisfying the request. Part of the licence
+        /// contract alongside keys and leases, but not something we have seen returned, so the
+        /// wording of a real one is unknown.
+        /// </summary>
+        public string? SatisfactionFailure =>
+            Json?["license"]?["satisfactionFailure"]?["description"]?.GetValue<string>();
+
         /// <summary>Status plus the inner fault, which is the part that says what to fix.</summary>
         public string Describe()
         {
+            if (SatisfactionFailure is { } reason)
+                return $"not entitled ({reason})";
+
             var inner = Json?["innererror"];
             var code = inner?["code"]?.GetValue<string>();
 
@@ -39,9 +50,26 @@ internal static class LicenseService
         internal string? Fault => Json?["innererror"]?["code"]?.GetValue<string>();
     }
 
-    public static async Task<Result> RequestAsync(Guid contentId, CancellationToken cancellationToken)
+    /// <param name="contentId">Content to request a licence for.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <param name="deviceToken">
+    /// A device token to use instead of searching the machine's cached ones. Supplied when the
+    /// identity was provisioned, since only its own token pairs with its device key.
+    /// </param>
+    public static async Task<Result> RequestAsync(
+        Guid contentId,
+        CancellationToken cancellationToken,
+        string? deviceToken = null)
     {
         var userTicket = await WamAuth.GetTokenAsync();
+
+        if (deviceToken is not null)
+        {
+            var client = new LicensingClient(userTicket) { DeviceAuthorizationToken = deviceToken };
+            var response = await client.RequestContentLicenseAsync(contentId, ct: cancellationToken);
+
+            return new Result(response.StatusCode, response.RawBody, response.Json);
+        }
 
         Result? last = null;
 

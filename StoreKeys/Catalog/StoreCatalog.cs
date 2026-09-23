@@ -36,13 +36,24 @@ internal static class StoreCatalog
                 $"DisplayCatalog returned no packages for {productId}. "
                 + "Console-only titles sometimes expose none on a PC market.");
 
+        // A product can ship both a PC and a console package. Console content cannot be
+        // licensed from a PC - the service answers DeviceNameNotHexBinary, and its keys are
+        // ODK-wrapped anyway - so drop those when a PC package exists. A console-only title
+        // keeps all of them, so IsXboxOnly still reports correctly.
+        var usable = packages.Any(p => !IsConsole(p.Platform))
+            ? packages.Where(p => !IsConsole(p.Platform)).ToList()
+            : packages;
+
         return new Resolution(
             productId,
             product.LocalizedProperties?.FirstOrDefault()?.ProductTitle,
-            packages.Select(p => p.ContentId).ToList(),
-            packages.Select(p => p.PackageFamilyName).FirstOrDefault(n => n is not null),
-            packages.Select(p => p.Platform ?? "").Where(x => x.Length > 0).ToList());
+            usable.Select(p => p.ContentId).ToList(),
+            usable.Select(p => p.PackageFamilyName).FirstOrDefault(n => n is not null),
+            usable.Select(p => p.Platform ?? "").Where(x => x.Length > 0).ToList());
     }
+
+    private static bool IsConsole(string? platform)
+        => platform?.Contains("Xbox", StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>
     /// Pulls a Store product id out of whatever the user pasted: a bare id, an xbox.com store
