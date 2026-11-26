@@ -18,11 +18,6 @@ namespace StoreKeys.Licensing;
 /// </remarks>
 internal static class LicenseService
 {
-    private const string RejectedTicket = "InvalidDeviceAuthorizationToken";
-
-    /// <summary>The ticket the service last accepted, reused for subsequent calls.</summary>
-    private static string? _acceptedTicket;
-
     public sealed record Result(int StatusCode, string RawBody, JsonNode? Json)
     {
         public bool IsSuccess => StatusCode is >= 200 and < 300;
@@ -62,48 +57,11 @@ internal static class LicenseService
         string? deviceToken = null)
     {
         var userTicket = await WamAuth.GetTokenAsync();
+        deviceToken ??= await SystemAuth.GetTicketAsync();
 
-        if (deviceToken is not null)
-        {
-            var client = new LicensingClient(userTicket) { DeviceAuthorizationToken = deviceToken };
-            var response = await client.RequestContentLicenseAsync(contentId, ct: cancellationToken);
+        var client = new LicensingClient(userTicket) { DeviceAuthorizationToken = deviceToken };
+        var response = await client.RequestContentLicenseAsync(contentId, ct: cancellationToken);
 
-            return new Result(response.StatusCode, response.RawBody, response.Json);
-        }
-
-        Result? last = null;
-
-        foreach (var ticket in CandidateTickets())
-        {
-            var client = new LicensingClient(userTicket) { DeviceAuthorizationToken = ticket };
-
-            var response = await client.RequestContentLicenseAsync(contentId, ct: cancellationToken);
-            last = new Result(response.StatusCode, response.RawBody, response.Json);
-
-            if (last.IsSuccess)
-            {
-                _acceptedTicket = ticket;
-                return last;
-            }
-
-            if (last.Fault != RejectedTicket)
-                return last;
-        }
-
-        return last ?? new Result(0, "", null);
+        return new Result(response.StatusCode, response.RawBody, response.Json);
     }
-
-    /// <summary>Accepted ticket first, then everything Windows has cached for this user.</summary>
-    private static IEnumerable<string> CandidateTickets()
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-
-        if (_acceptedTicket is not null && seen.Add(_acceptedTicket))
-            yield return _acceptedTicket;
-
-        foreach (var candidate in DeviceTokenStore.ReadAll())
-            if (candidate.Token is not null && seen.Add(candidate.Token))
-                yield return candidate.Token;
-    }
-
 }
