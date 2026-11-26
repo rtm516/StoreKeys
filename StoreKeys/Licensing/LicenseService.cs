@@ -4,17 +4,12 @@ using StoreKeys.Msa;
 namespace StoreKeys.Licensing;
 
 /// <summary>
-/// Requests content licences from the Store licensing service, handling device-ticket
-/// selection.
+/// Requests content licences from the Store licensing service.
 /// </summary>
 /// <remarks>
-/// The Authorization header needs a *device* ticket, not a user one. We cannot mint one - WAM
-/// returns user tickets for every client id, scope policy and request property - but Windows
-/// caches device tickets for this user, so we read those.
-///
-/// Which cached ticket the service accepts is scoped per relying party and is not predictable
-/// from the key name, so they are tried in order until one is accepted. Only a rejected ticket
-/// is worth retrying; any other fault means the request itself is wrong.
+/// The Authorization header needs a *device* ticket, not a user one. WAM only ever returns user
+/// tickets, so this machine's device ticket comes from the OnlineId system authenticator instead
+/// - see <see cref="SystemAuth"/>.
 /// </remarks>
 internal static class LicenseService
 {
@@ -48,8 +43,8 @@ internal static class LicenseService
     /// <param name="contentId">Content to request a licence for.</param>
     /// <param name="cancellationToken">Cancels the request.</param>
     /// <param name="deviceToken">
-    /// A device token to use instead of searching the machine's cached ones. Supplied when the
-    /// identity was provisioned, since only its own token pairs with its device key.
+    /// A device token to use instead of this machine's. Supplied when the identity was
+    /// provisioned, since only its own token pairs with its device key.
     /// </param>
     public static async Task<Result> RequestAsync(
         Guid contentId,

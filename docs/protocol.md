@@ -10,7 +10,7 @@ sequenceDiagram
     autonumber
     participant K as StoreKeys
     participant L as Licence store (elevated)
-    participant I as IdentityCRL (HKCU)
+    participant I as OnlineId system authenticator
     participant W as Web Account Manager
     participant S as licensing.mp.microsoft.com
 
@@ -18,7 +18,7 @@ sequenceDiagram
     K->>L: read device licence (CLEP v4, 4094 bytes)
     L-->>K: 16-byte device key
 
-    K->>I: read cached DeviceTicket (DPAPI)
+    K->>I: request system ticket for the licensing scope
     I-->>K: device authorization token
     K->>W: request MSA ticket for the licensing scope
     W-->>K: user ticket
@@ -137,37 +137,24 @@ The Authorization header needs a *device* ticket. Send a user ticket and the ser
 faultcode 4000 `InvalidDeviceAuthorizationToken`. Both are MSA compact tokens differing only in
 size and type flags (`EwB4BV8i` vs `EwA4BF8i`), which makes the mistake easy to miss.
 
-We cannot mint one: WAM was swept exhaustively (every client id in LicenseManager.dll, twelve
+WAM will not issue one: it was swept exhaustively (every client id in LicenseManager.dll, twelve
 scope policies, eight request properties, explicit broker accounts, MSIX package identity with
 `storeLicenseManagement`) and every combination returns a user ticket.
 
-We do not need to. Windows already caches device tickets in the current user's own store, keyed
-per client, located via [yegors/deGDID](https://github.com/yegors/deGDID):
+The older OnlineId API does. `OnlineIdSystemAuthenticator.Default.GetTicketAsync`, with
+`ApplicationId` set to the licensing client id and the licensing scope as the request, returns
+a *system* ticket for this machine's MSA device. It is documented, callable from a desktop app,
+and needs neither elevation nor a prompt. Like other MSA tickets it carries a `t=` prefix, which
+is stripped before use.
 
-```
-HKCU\SOFTWARE\Microsoft\IdentityCRL\Immersive\production\Token\<client-or-package-sid>
-    DeviceTicket   REG_BINARY   <DPAPI blob>
-    DeviceId       REG_SZ       <16 hex chars>
-```
+Its `Identity.Id` is the same device id Windows records against the device tickets it caches
+under `HKCU\SOFTWARE\Microsoft\IdentityCRL\Immersive\production\Token` (an earlier version
+decrypted and tried those instead), and a licence fetched with it unwraps under the device key
+from the local licence store to the same CIKs. Tickets expire within hours, so a fresh one is
+requested for every licence call rather than cached.
 
-Reading one takes three steps, each with a trap:
-
-1. **Find the DPAPI blob.** These values carry a leading dword, so the blob starts at offset 4,
-   not 0. Sniffing for the provider GUID at the wrong offset makes every entry look like it is
-   not DPAPI at all.
-2. **Decrypt** with `CryptUnprotectData`, CurrentUser scope. No entropy.
-3. **Extract the ticket.** The plaintext is a structure, not a bare string. The ticket is a long
-   printable run inside it and keeps its `t=` prefix, which must be stripped.
-
-**Which ticket is discovered, not configured.** Tickets are scoped per relying party and the key
-name does not tell you which: both package SIDs hardcoded in LicenseManager.dll are rejected, as
-is the dcat client WUTokenHelper uses. So nothing is hardcoded. The tool reads every ticket,
-orders them by shape alone, and moves to the next on `InvalidDeviceAuthorizationToken`. Any other
-fault stops the loop, since that means the request is wrong rather than the ticket.
-
-**Expiry is handled by re-reading.** Measured, not assumed: a token that returned HTTP 200
-returned 401 a few hours later. A ticket that dies in hours cannot be a setup step, so the tool
-re-reads the registry every run and a stale one falls through to a fresh one.
+This only covers this machine's identity. A registered identity has no system ticket and signs
+its own token request instead - see `DeviceAuthentication`.
 
 ## ContentId
 
@@ -230,7 +217,7 @@ Only `FetchPackagesAsync` needs it; the CIK path uses DisplayCatalog only.
 
 * `LicensingClient` / `ClientChallenge` - the licensing protocol is undocumented and no library
   implements it.
-* `DeviceTokenStore`, `WamAuth` - Windows APIs, called directly.
+* `SystemAuth`, `WamAuth` - Windows APIs, called directly.
 * `XvcHeader` - only reads the VDUID at 0x220. LibXboxOne has a full `XvdHeader` struct but it
   wants the whole header; reading 16 bytes works the same over a local file and an HTTP range
   request, which is the point.
